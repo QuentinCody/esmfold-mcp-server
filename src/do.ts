@@ -13,21 +13,40 @@ export class EsmfoldDataDO extends RestStagingDO {
 	protected getSchemaHints(data: unknown): SchemaHints | undefined {
 		if (!data || typeof data !== "object") return undefined;
 		const obj = data as Record<string, unknown>;
+
+		// Inspect the rows under the envelope (wrapped `results: [...]` or bare object)
+		const candidateSample = Array.isArray(obj.results) && obj.results.length > 0
+			? (obj.results[0] as Record<string, unknown>)
+			: obj;
+
 		const hasAtlasShape =
-			typeof obj.sequence === "string" ||
-			typeof obj.plddt === "number" ||
-			typeof obj.model_version === "string" ||
-			typeof obj.length === "number";
+			typeof candidateSample.atlas_id === "string" ||
+			typeof candidateSample.sequence === "string" ||
+			typeof candidateSample.pdb_text === "string" ||
+			typeof candidateSample.plddt_mean === "number" ||
+			typeof candidateSample.model_version === "string";
+
 		if (hasAtlasShape) {
 			return {
 				tableName: "atlas_structures",
-				indexes: ["model_version", "length"].filter((k) => k in obj),
+				// `pdb_text` stays TEXT (schema-inference v2 keeps large strings as TEXT).
+				columnTypes: {
+					atlas_id: "TEXT",
+					sequence: "TEXT",
+					pdb_text: "TEXT",
+					length: "INTEGER",
+					pdb_bytes: "INTEGER",
+					plddt_mean: "REAL",
+					model_version: "TEXT",
+				},
+				indexes: ["atlas_id", "length", "model_version"].filter((k) => k in candidateSample),
 			};
 		}
+
 		if (Array.isArray(data) && data.length > 0) {
 			const sample = data[0];
 			if (sample && typeof sample === "object" && "sequence" in (sample as Record<string, unknown>)) {
-				return { tableName: "atlas_structures", indexes: ["model_version", "length"] };
+				return { tableName: "atlas_structures", indexes: ["atlas_id", "length", "model_version"] };
 			}
 		}
 		return undefined;
