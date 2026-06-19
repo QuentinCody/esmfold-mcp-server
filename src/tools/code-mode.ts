@@ -20,6 +20,8 @@ export function registerCodeMode(server: McpServer, env: CodeModeEnv): void {
 
 	const executeTool = createExecuteTool({
 		prefix: "esmfold",
+		// Verifiable provenance: esmfold_execute results carry a _meta.citation.
+		source: { id: "esmfold", name: "ESM Atlas (ESMFold)", url: "https://esmatlas.com" },
 		catalog: esmfoldCatalog,
 		apiFetch,
 		doNamespace: env.ESMFOLD_DATA_DO,
