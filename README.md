@@ -26,5 +26,5 @@ Live folding is deferred to a future Cloudflare Workflow plan. See:
 ## Local dev
 
 ```bash
-./scripts/dev-servers.sh esmfold   # after the server is wired into config/server-manifest.json
+./scripts/dev-servers.sh esmfold
 ```
