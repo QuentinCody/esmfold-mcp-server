@@ -21,28 +21,31 @@ export const esmfoldCatalog: ApiCatalog = {
 		"- LIVE FOLDING IS NOT EXPOSED. POST /foldSequence/v1/pdb/ is intentionally absent — sequence-prediction\n" +
 		"  jobs can take 5–60+ seconds and don't fit in the 30s Worker CPU budget. They will be added in a\n" +
 		"  follow-up plan that wires Cloudflare Workflows for async/long-running endpoints.\n" +
-		"- ID convention: MGnify accessions (e.g. MGYP000912776285).\n" +
+		"- ID convention: MGnify accessions (e.g. MGYP002537940442, the Atlas documentation sample).\n" +
 		"- /atlas/structure/{id} returns PDB text (large strings stay as TEXT in staging — schema-inference v2).\n" +
 		"- /atlas/sequence/{id} returns the JSON metadata record (sequence, length, plddt, model_version, etc.).",
 	endpoints: [
 		{
 			method: "GET",
 			path: "/atlas/structure/{atlas_id}",
-			summary: "Fetch the precomputed PDB text for an Atlas structure (mapped to /fetchPredictedStructure/{id}.pdb)",
+			summary:
+				"Fetch the precomputed PDB text for an Atlas structure (mapped to /fetchPredictedStructure/{id}.pdb)",
 			category: "atlas",
 			pathParams: [
 				{
 					name: "atlas_id",
 					type: "string",
 					required: true,
-					description: "MGnify accession (e.g. MGYP000912776285) for a precomputed Atlas structure",
+					description:
+						"MGnify accession (e.g. MGYP002537940442) for a precomputed Atlas structure",
 				},
 			],
 		},
 		{
 			method: "GET",
 			path: "/atlas/sequence/{atlas_id}",
-			summary: "Fetch the JSON metadata record for an Atlas entry (sequence, length, plddt, model_version)",
+			summary:
+				"Fetch the JSON metadata record for an Atlas entry (sequence, length, plddt, model_version)",
 			category: "atlas",
 			pathParams: [
 				{
@@ -64,14 +67,16 @@ export const esmfoldCatalog: ApiCatalog = {
 					name: "atlas_id",
 					type: "string",
 					required: true,
-					description: "MGnify accession to resolve. Currently this returns the same record as /atlas/sequence/{id}.",
+					description:
+						"MGnify accession to resolve. Currently this returns the same record as /atlas/sequence/{id}.",
 				},
 			],
 		},
 		{
 			method: "GET",
 			path: "/atlas/about",
-			summary: "Fetch the Atlas About page metadata (release notes, build version, total entries).",
+			summary:
+				"Fetch the Atlas About page metadata (release notes, build version, total entries).",
 			category: "atlas",
 		},
 	],

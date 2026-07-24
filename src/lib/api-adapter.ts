@@ -1,5 +1,5 @@
 import type { ApiFetchFn } from "@bio-mcp/shared/codemode/catalog";
-import { esmfoldFetch, ESMFOLD_BASE } from "./http";
+import { ESMFOLD_BASE, esmfoldFetch } from "./http";
 
 /**
  * Map clean catalog paths onto the actual ESM Atlas REST URLs.
@@ -23,25 +23,82 @@ import { esmfoldFetch, ESMFOLD_BASE } from "./http";
 
 /** Minimal three-letter → one-letter amino acid table for SEQRES parsing. */
 const AA3_TO_AA1: Record<string, string> = {
-	ALA: "A", ARG: "R", ASN: "N", ASP: "D", CYS: "C",
-	GLN: "Q", GLU: "E", GLY: "G", HIS: "H", ILE: "I",
-	LEU: "L", LYS: "K", MET: "M", PHE: "F", PRO: "P",
-	SER: "S", THR: "T", TRP: "W", TYR: "Y", VAL: "V",
-	SEC: "U", PYL: "O",
+	ALA: "A",
+	ARG: "R",
+	ASN: "N",
+	ASP: "D",
+	CYS: "C",
+	GLN: "Q",
+	GLU: "E",
+	GLY: "G",
+	HIS: "H",
+	ILE: "I",
+	LEU: "L",
+	LYS: "K",
+	MET: "M",
+	PHE: "F",
+	PRO: "P",
+	SER: "S",
+	THR: "T",
+	TRP: "W",
+	TYR: "Y",
+	VAL: "V",
+	SEC: "U",
+	PYL: "O",
 };
+
+interface AtomResidue {
+	key: string;
+	aminoAcid: string;
+}
+
+function recordAtomResidue(line: string, chains: Map<string, AtomResidue[]>): void {
+	if (line.slice(12, 16).trim() !== "CA") return;
+
+	const aminoAcid = AA3_TO_AA1[line.slice(17, 20).trim().toUpperCase()];
+	if (!aminoAcid) return;
+
+	const chain = line[21] ?? "A";
+	const residueKey = line.slice(22, 27).trim();
+	const residues = chains.get(chain) ?? [];
+	if (residues[residues.length - 1]?.key === residueKey) return;
+
+	residues.push({ key: residueKey, aminoAcid });
+	chains.set(chain, residues);
+}
+
+function sequenceFromSeqres(chains: Map<string, string[]>): string {
+	return Array.from(chains.values())
+		.map((chars) => chars.join(""))
+		.join("");
+}
+
+function sequenceFromAtoms(chains: Map<string, AtomResidue[]>): string {
+	return Array.from(chains.values())
+		.map((residues) => residues.map(({ aminoAcid }) => aminoAcid).join(""))
+		.join("");
+}
 
 /**
  * Parse a PDB text blob into { sequence, length, model_version, plddt_mean? }.
  * Falls back to empty fields when SEQRES is missing.
  */
-function parsePdbSummary(atlasId: string, pdb: string): {
+interface ParsePdbSummaryInput {
+	atlasId: string;
+	pdb: string;
+}
+
+interface PdbSummary {
 	atlas_id: string;
 	sequence: string;
 	length: number;
 	model_version: string | null;
 	plddt_mean: number | null;
-} {
+}
+
+export function parsePdbSummary({ atlasId, pdb }: ParsePdbSummaryInput): PdbSummary {
 	const chainSeqs = new Map<string, string[]>();
+	const atomChainSeqs = new Map<string, AtomResidue[]>();
 	const plddts: number[] = [];
 	let modelVersion: string | null = null;
 
@@ -59,17 +116,16 @@ function parsePdbSummary(atlasId: string, pdb: string): {
 			const match = line.match(/ESM[\w.-]*\s+([\w.-]+)/i);
 			if (match) modelVersion = match[1];
 		} else if (line.startsWith("ATOM") && line.length >= 66) {
+			// ESM Atlas PDBs do not consistently include SEQRES. A CA atom is
+			// present once per modeled residue, so retain it as a lossless fallback.
+			recordAtomResidue(line, atomChainSeqs);
 			const b = Number.parseFloat(line.slice(60, 66));
 			if (Number.isFinite(b)) plddts.push(b);
 		}
 	}
 
-	const sequence = Array.from(chainSeqs.values())
-		.map((chars) => chars.join(""))
-		.join("");
-	const pLddtMean = plddts.length > 0
-		? plddts.reduce((a, b) => a + b, 0) / plddts.length
-		: null;
+	const sequence = sequenceFromSeqres(chainSeqs) || sequenceFromAtoms(atomChainSeqs);
+	const pLddtMean = plddts.length > 0 ? plddts.reduce((a, b) => a + b, 0) / plddts.length : null;
 
 	return {
 		atlas_id: atlasId,
@@ -98,7 +154,9 @@ export function createEsmfoldApiFetch(): ApiFetchFn {
 		} else if (path === "/atlas/search") {
 			const id = (params?.atlas_id as string | undefined) ?? "";
 			if (!id) {
-				const err = new Error("/atlas/search requires the atlas_id query param") as Error & {
+				const err = new Error(
+					"/atlas/search requires the atlas_id query param",
+				) as Error & {
 					status: number;
 				};
 				err.status = 400;
@@ -112,7 +170,10 @@ export function createEsmfoldApiFetch(): ApiFetchFn {
 				headers: { Accept: "text/html" },
 			});
 			const text = await response.text();
-			return { status: response.status, data: { url: "https://esmatlas.com/about", body: text } };
+			return {
+				status: response.status,
+				data: { url: "https://esmatlas.com/about", body: text },
+			};
 		} else if (path === "/foldSequence/v1/pdb/" || path.startsWith("/foldSequence/")) {
 			const err = new Error(
 				"Live folding is out of scope for this server. POST /foldSequence/v1/pdb/ is deferred to the future Workflow-async plan (see docs/adr/ADR-005). Use precomputed Atlas endpoints only.",
@@ -130,7 +191,9 @@ export function createEsmfoldApiFetch(): ApiFetchFn {
 			} catch {
 				errorBody = response.statusText;
 			}
-			const error = new Error(`HTTP ${response.status}: ${errorBody.slice(0, 200)}`) as Error & {
+			const error = new Error(
+				`HTTP ${response.status}: ${errorBody.slice(0, 200)}`,
+			) as Error & {
 				status: number;
 				data: unknown;
 			};
@@ -144,7 +207,9 @@ export function createEsmfoldApiFetch(): ApiFetchFn {
 		if (summariseSequence) {
 			const pdbText = await response.text();
 			if (!pdbText || pdbText.trim().length === 0) {
-				const err = new Error(`ESM Atlas returned an empty body for ${sequenceAtlasId}`) as Error & {
+				const err = new Error(
+					`ESM Atlas returned an empty body for ${sequenceAtlasId}`,
+				) as Error & {
 					status: number;
 				};
 				err.status = 404;
@@ -155,7 +220,7 @@ export function createEsmfoldApiFetch(): ApiFetchFn {
 			// atlas_structures table (with DO schema hints applied).
 			return {
 				status: response.status,
-				data: { results: [parsePdbSummary(sequenceAtlasId, pdbText)] },
+				data: { results: [parsePdbSummary({ atlasId: sequenceAtlasId, pdb: pdbText })] },
 			};
 		}
 
@@ -165,21 +230,25 @@ export function createEsmfoldApiFetch(): ApiFetchFn {
 			// a chunked blob.
 			const pdbText = await response.text();
 			if (!pdbText || pdbText.trim().length === 0) {
-				const err = new Error(`ESM Atlas returned an empty body for ${structureAtlasId}`) as Error & {
+				const err = new Error(
+					`ESM Atlas returned an empty body for ${structureAtlasId}`,
+				) as Error & {
 					status: number;
 				};
 				err.status = 404;
 				throw err;
 			}
-			const summary = parsePdbSummary(structureAtlasId, pdbText);
+			const summary = parsePdbSummary({ atlasId: structureAtlasId, pdb: pdbText });
 			return {
 				status: response.status,
 				data: {
-					results: [{
-						...summary,
-						pdb_text: pdbText,
-						pdb_bytes: pdbText.length,
-					}],
+					results: [
+						{
+							...summary,
+							pdb_text: pdbText,
+							pdb_bytes: pdbText.length,
+						},
+					],
 				},
 			};
 		}
