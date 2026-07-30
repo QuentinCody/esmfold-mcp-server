@@ -68,7 +68,7 @@ assertContains('src/tools/code-mode.ts', codeMode, 'createEsmfoldApiFetch', 'cod
 
 const indexContent = readFile('src/index.ts');
 assertContains('src/index.ts', indexContent, 'EsmfoldDataDO', 'index.ts exports EsmfoldDataDO');
-assertContains('src/index.ts', indexContent, 'McpAgent', 'index.ts uses McpAgent');
+assertContains('src/index.ts', indexContent, 'StatelessMcpWorker', 'index.ts uses StatelessMcpWorker');
 
 const doContent = readFile('src/do.ts');
 assertContains('src/do.ts', doContent, 'atlas_structures', 'do.ts has atlas_structures schema hint');
