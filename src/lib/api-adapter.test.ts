@@ -1,5 +1,28 @@
-import { describe, expect, it } from "vitest";
-import { parsePdbSummary } from "./api-adapter";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createEsmfoldApiFetch, parsePdbSummary } from "./api-adapter";
+
+afterEach(() => vi.unstubAllGlobals());
+
+it("routes bulk discovery and rejects writes before fetching", async () => {
+	const fetcher = vi.fn().mockImplementation(() => Promise.resolve(new Response("https://dl.fbaipublicfiles.com/esmatlas/v0/highquality_clust30/foldseekdb/highquality_clust30.dbtype\n")));
+	vi.stubGlobal("fetch", fetcher);
+	const api = createEsmfoldApiFetch();
+	const request = { path: "/atlas/bulk/manifest", params: { release: "v0", selection: "highquality_clust30", artifact: "foldseek" } };
+	expect(await api({ ...request, method: "GET" })).toMatchObject({ status: 200, data: { total_count: 1 } });
+	await expect(api({ ...request, method: "POST" })).rejects.toThrow("requires GET");
+	expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+it("preserves summary and raw PDB row envelopes and rejects empty bodies", async () => {
+	const pdb = "SEQRES   1 A    3  MET GLY LYS";
+	vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(new Response(pdb))));
+	const api = createEsmfoldApiFetch();
+	const summary = await api({ method: "GET", path: "/atlas/sequence/MGYP1" });
+	expect(summary.data).toMatchObject({ results: [{ atlas_id: "MGYP1", sequence: "MGK", length: 3, model_version: null, plddt_mean: null, source: { body_bytes: pdb.length } }] });
+	expect((await api({ method: "GET", path: "/atlas/structure/MGYP1" })).data).toMatchObject({ results: [{ pdb_text: pdb, pdb_bytes: pdb.length }] });
+	vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(" ")));
+	await expect(api({ method: "GET", path: "/atlas/sequence/MGYP1" })).rejects.toMatchObject({ status: 502 });
+});
 
 describe("parsePdbSummary", () => {
 	it("derives a sequence from CA atoms when an Atlas PDB omits SEQRES", () => {

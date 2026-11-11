@@ -1,6 +1,7 @@
 import type { McpServer } from "@bio-mcp/shared/mcp";
 import { z } from "zod";
 import { createGetSchemaHandler } from "@bio-mcp/shared/staging/utils";
+import { esmfoldResponse } from "../lib/tool-result";
 
 interface SchemaEnv {
 	ESMFOLD_DATA_DO?: unknown;
@@ -9,8 +10,8 @@ interface SchemaEnv {
 export function registerGetSchema(server: McpServer, env?: SchemaEnv): void {
 	const handler = createGetSchemaHandler("ESMFOLD_DATA_DO", "esmfold");
 
-	server.registerTool(
-		"esmfold_get_schema",
+	for (const name of ["esmfold_get_schema", "mcp_esmfold_get_schema"]) server.registerTool(
+		name,
 		{
 			title: "Get Staged ESM Atlas Data Schema",
 			description:
@@ -24,11 +25,11 @@ export function registerGetSchema(server: McpServer, env?: SchemaEnv): void {
 		},
 		async (args, extra) => {
 			const runtimeEnv = env || (extra as { env?: SchemaEnv })?.env || {};
-			return handler(
+			return esmfoldResponse(() => handler(
 				args as Record<string, unknown>,
 				runtimeEnv as Record<string, unknown>,
 				(extra as Record<string, unknown>),
-			);
+			), runtimeEnv, name, extra, args);
 		},
 	);
 }
